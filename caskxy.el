@@ -1,12 +1,12 @@
-;;; caskxy.el --- Control Cask on Emacs
+;;; caskxy.el --- Control Cask in Emacs
 
 ;; Copyright (C) 2014  Hiroaki Otsu
 
 ;; Author: Hiroaki Otsu <ootsuhiroaki@gmail.com>
 ;; Keywords: convenience
 ;; URL: https://github.com/aki2o/caskxy
-;; Version: 0.0.1
-;; Package-Requires: ((log4e "0.2.0"))
+;; Version: 0.0.2
+;; Package-Requires: ((log4e "0.2.0") (yaxception "0.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 
 ;;; Dependency:
 ;; 
+;; - yaxception.el ( see <https://github.com/aki2o/yaxception> )
 ;; - log4e.el ( see <https://github.com/aki2o/log4e> )
 
 ;;; Installation:
@@ -46,22 +47,24 @@
 ;; [EVAL] (autodoc-document-lisp-buffer :type 'user-variable :prefix "caskxy/" :docstring t)
 ;; `caskxy/tester-backend'
 ;; Feature of running test.
+;; `caskxy/cask-cli-path'
+;; Path of cask-cli.el.
 ;; 
 ;;  *** END auto-documentation
 
 ;;; API:
 ;; 
 ;; [EVAL] (autodoc-document-lisp-buffer :type 'command :prefix "caskxy/" :docstring t)
-;; `caskxy/set-emacs'
+;; `caskxy/set-emacs-runtime'
 ;; Set the condition of emacs runtime.
-;; `caskxy/set-location'
+;; `caskxy/set-cask-file'
 ;; Set the condition of project path.
+;; `caskxy/set-tester-backend'
+;; Set BACKEND to `caskxy/tester-backend'.
 ;; `caskxy/show-condition'
 ;; Show current condition.
 ;; `caskxy/do-cask-command'
 ;; Execute the command of Cask.
-;; `caskxy/set-tester-backend'
-;; Set BACKEND to `caskxy/tester-backend'.
 ;; `caskxy/run-test'
 ;; Run test of TEST-FILE.
 ;; 
@@ -84,6 +87,7 @@
 ;;; Tested On:
 ;; 
 ;; - Emacs ... GNU Emacs 24.2.1 (i386-mingw-nt5.1.2600) of 2012-12-08 on GNUPACK
+;; - yaxception.el ... Version 0.1
 ;; - log4e.el ... Version 0.2.0
 
 
@@ -96,6 +100,7 @@
 
 (eval-when-compile (require 'cl))
 (require 'log4e)
+(require 'yaxception)
 (require 'package nil t)
 (require 'ert nil t)
 (require 'el-expectations nil t)
@@ -111,6 +116,11 @@
   :type 'symbol
   :group 'caskxy)
 
+(defcustom caskxy/cask-cli-path (concat (directory-file-name (getenv "HOME")) "/.cask/cask-cli.el")
+  "Path of cask-cli.el."
+  :type 'file
+  :group 'caskxy)
+
 
 (log4e:deflogger "caskxy" "%t [%l] %m" "%H:%M:%S" '((fatal . "fatal")
                                                     (error . "error")
@@ -121,16 +131,10 @@
 (caskxy--log-set-level 'trace)
 
 
-(defvar caskxy--cask-features '(cask-cli cask cask-bootstrap))
-(defvar caskxy--cask-depend-features '(s dash f commander git epl))
 (defvar caskxy--cask-commands '("package" "install" "update" "upgrade" "exec" "init" "version" "list"
                                 "info" "help" "load-path" "path" "package-directory" "outdated"))
-(defvar caskxy--cask-directory (expand-file-name (concat (getenv "HOME") "/.cask/")))
-(defvar caskxy--cask-elisp (concat caskxy--cask-directory "cask-cli.el"))
-(defvar caskxy--cask-command (concat caskxy--cask-directory "bin/cask"))
 (defvar caskxy--cask-location default-directory)
-(defvar caskxy--install-command-enable nil)
-(defvar caskxy--exec-result-buffer-name " *Caskxy Exec*")
+(defvar caskxy--result-buffer-name "*Caskxy Result*")
 (defvar caskxy--tester-backends nil)
 
 
@@ -145,74 +149,55 @@
   (declare (indent 1))
   `(let ((it ,test)) (when it ,@body)))
 
-(defmacro caskxy--save-package-info (&rest body)
+(defsubst caskxy--get-relate-env-vars ()
+  '("EMACSLOADPATH" "EMACS" "INSIDE_EMACS" "PATH"))
+
+(defmacro caskxy--with-clean-env (&rest body)
   (declare (indent 0))
-  `(let ((bkup-package-archives       (when (featurep 'package) package-archives))
-         (bkup-package-user-dir       (when (featurep 'package) package-user-dir))
-         (bkup-package-activated-list (when (featurep 'package) package-activated-list)))
-     (unwind-protect
-         (progn ,@body)
-       (when (featurep 'package)
-         (caskxy--trace "start restore package condition")
-         (setq package-archives       bkup-package-archives)
-         (setq package-user-dir       bkup-package-user-dir)
-         (setq package-activated-list bkup-package-activated-list)
-         (package-initialize)))))
+  (let* ((bkup-sym-maker (lambda (s) (intern (concat "bkup-env-" (downcase s)))))
+         (let-forms (loop for v in (caskxy--get-relate-env-vars)
+                          for sym = (funcall bkup-sym-maker v)
+                          collect `(,sym (getenv ,v))))
+         (restore-forms (loop for v in (caskxy--get-relate-env-vars)
+                              for sym = (funcall bkup-sym-maker v)
+                              collect `(setenv ,v ,sym))))
+    `(let (,@let-forms)
+       (unwind-protect
+           (progn
+             (setenv "EMACSLOADPATH" nil)
+             (setenv "INSIDE_EMACS" nil)
+             ,@body)
+         ,@restore-forms
+         nil))))
 
-(defun caskxy--reload-cask-elisp ()
-  (caskxy--trace "start reload cask elisp.")
-  (dolist (f (append caskxy--cask-features
-                     (reverse caskxy--cask-depend-features)))
-    (when (featurep f)
-      (unload-feature f)))
-  (defadvice cask-cli/install (around caskxy activate)
-    (when caskxy--install-command-enable
-      ad-do-it))
-  (defadvice cask-setup-project-variables (after caskxy activate)
-    (setq package-user-dir (cask-elpa-dir)))
-  (load caskxy--cask-elisp))
+(defun caskxy--run-shell-command (cmdstr &optional result-as-string)
+  (let ((dbg-tmpl (mapconcat (lambda (s) (concat s ": %s")) (caskxy--get-relate-env-vars) "\n"))
+        (dbg-vars (loop for v in (caskxy--get-relate-env-vars)
+                        collect (getenv v))))
+    (caskxy--trace (concat "execute : %s\n" dbg-tmpl) cmdstr dbg-vars)
+    (if result-as-string
+        (shell-command-to-string (concat cmdstr " 2>/dev/null"))
+      (shell-command cmdstr caskxy--result-buffer-name)
+      t)))
 
-(defun caskxy--unload-cask-elisp ()
-  (caskxy--trace "start unload cask elisp.")
-  (dolist (f (append caskxy--cask-features
-                     (reverse caskxy--cask-depend-features)))
-    (when (featurep f)
-      (unload-feature f)))
-  (dolist (f caskxy--cask-depend-features)
-    (require f nil t)))
+(defsubst caskxy--get-emacs-quick-command (argstr)
+  (caskxy--trace "start get emacs quick command : %s" argstr)
+  (format "'%s' -Q %s" (or (getenv "EMACS") "emacs") argstr))
 
-(defun caskxy--detect-emacs-version ()
-  (caskxy--trace "start detect emacs version.")
-  (caskxy--get-pure-elisp-result "emacs-version"))
+(defsubst caskxy--get-emacs-batch-command (argstr)
+  (caskxy--get-emacs-quick-command (concat "--batch " argstr)))
 
-(defun caskxy--detect-load-path ()
-  (caskxy--trace "start detect load path.")
-  (split-string
-   (caskxy--get-pure-elisp-result "(mapconcat 'identity load-path \\\"\\n\\\")")
-   "\n"))
+(defsubst caskxy--get-emacs-script-command (argstr)
+  (caskxy--get-emacs-quick-command (concat "--script " argstr)))
 
-(defun caskxy--get-pure-elisp-result (elisp)
-  (shell-command-to-string
-   (caskxy--get-emacs-batch-command (format "--eval \"(princ %s)\"" elisp))))
-
-(defun caskxy--get-emacs-batch-command (argstr)
-  (caskxy--trace "start get emacs batch command : %s" argstr)
-  (format "'%s' -Q --batch %s" (or (getenv "EMACS") "emacs") argstr))
-
-(defun caskxy--do-exec (&optional cmdstr)
+(defun caskxy--do-exec (&optional cmdstr result-as-string)
   (when (not cmdstr)
    (setq cmdstr (read-string "Command: ")))
   (caskxy--trace "start do exec : %s" cmdstr)
-  (let ((bkup-load-path-env (getenv "EMACSLOADPATH"))
-        (bkup-path-env (getenv "PATH")))
-    (unwind-protect
-        (progn
-          (setenv "EMACSLOADPATH" (caskxy/do-cask-command "load-path"))
-          (setenv "PATH" (caskxy/do-cask-command "path"))
-          (shell-command cmdstr caskxy--exec-result-buffer-name))
-      (setenv "EMACSLOADPATH" bkup-load-path-env)
-      (setenv "PATH" bkup-path-env)
-      t)))
+  (caskxy--with-clean-env
+    (setenv "EMACSLOADPATH" (caskxy/do-cask-command "load-path" t))
+    (setenv "PATH" (caskxy/do-cask-command "path" t))
+    (caskxy--run-shell-command cmdstr result-as-string)))
 
 (defun caskxy--seek-test-files (&optional dir)
   (caskxy--trace "start seek test files : %s" dir)
@@ -227,7 +212,7 @@
         append (caskxy--seek-test-files node)))
 
 (defun caskxy--make-load-file-option (load-files)
-  (or (mapconcat (lambda (f) (format "-l '%s'" f)) load-files " ")
+  (or (mapconcat (lambda (f) (concat "-l " (shell-quote-argument f))) load-files " ")
       ""))
 
 
@@ -292,29 +277,64 @@ FILTER is the function to do something for the buffer of the test result.
 ;; User Command
 
 ;;;###autoload
-(defun caskxy/set-emacs (emacs)
+(defun caskxy/set-emacs-runtime (emacs)
   "Set the condition of emacs runtime.
 
 EMACS is the path/command of the emacs runtime used for test."
   (interactive
    (list (read-file-name "Select Emacs Runtime (emacs): " "/" "emacs")))
-  (caskxy--trace "start set emacs : %s" emacs)
-  (setenv "EMACS" (if (and (stringp emacs)
-                           (not (string= emacs "")))
-                      (expand-file-name emacs)
-                    "emacs"))
-  (caskxy--show-message "Set '%s'" (getenv "EMACS")))
+  (yaxception:$
+    (yaxception:try
+      (caskxy--trace "start set emacs : %s" emacs)
+      (setenv "EMACS" (if (and (stringp emacs)
+                               (not (string= emacs "")))
+                          (expand-file-name emacs)
+                        "emacs"))
+      (caskxy--show-message "Set '%s'" (getenv "EMACS")))
+    (yaxception:catch 'error e
+      (caskxy--show-message "Failed set emacs runtime : %s" (yaxception:get-text e))
+      (caskxy--error "failed set emacs runtime : %s\n%s"
+                     (yaxception:get-text e)
+                     (yaxception:get-stack-trace-string e)))))
 
 ;;;###autoload
-(defun caskxy/set-location (cask-file)
+(defun caskxy/set-cask-file (cask-file)
   "Set the condition of project path.
 
 CASK-FILE is the path of 'Cask' file in the tested project."
   (interactive
    (list (read-file-name "Select 'Cask' file: " nil "Cask" t)))
-  (caskxy--trace "start set location : %s" cask-file)
-  (setq caskxy--cask-location (file-name-directory (expand-file-name cask-file)))
-  (caskxy--show-message "Set '%s'" caskxy--cask-location))
+  (yaxception:$
+    (yaxception:try
+      (caskxy--trace "start set location : %s" cask-file)
+      (setq caskxy--cask-location (file-name-directory (expand-file-name cask-file)))
+      (caskxy--show-message "Set '%s'" caskxy--cask-location))
+    (yaxception:catch 'error e
+      (caskxy--show-message "Failed set cask file : %s" (yaxception:get-text e))
+      (caskxy--error "failed set cask file : %s\n%s"
+                     (yaxception:get-text e)
+                     (yaxception:get-stack-trace-string e)))))
+
+;;;###autoload
+(defun caskxy/set-tester-backend (backend)
+  "Set BACKEND to `caskxy/tester-backend'."
+  (interactive
+   (list (completing-read "Select Backend (ert): " (mapcar 'car caskxy--tester-backends) nil t nil '() 'ert)))
+  (yaxception:$
+    (yaxception:try
+      (caskxy--trace "start set tester backend : %s" backend)
+      (when (and (stringp backend)
+                 (not (string= backend "")))
+        (setq backend (intern backend)))
+      (if (not (symbolp backend))
+          (caskxy--show-message "Invalid value : %s" backend)
+        (setq caskxy/tester-backend backend)
+        (caskxy--show-message "Set '%s" backend)))
+    (yaxception:catch 'error e
+      (caskxy--show-message "Failed set tester backend : %s" (yaxception:get-text e))
+      (caskxy--error "failed set tester backend : %s\n%s"
+                     (yaxception:get-text e)
+                     (yaxception:get-stack-trace-string e)))))
 
 ;;;###autoload
 (defun caskxy/show-condition ()
@@ -326,43 +346,34 @@ CASK-FILE is the path of 'Cask' file in the tested project."
                    (format "  Tester: %s" caskxy/tester-backend))))
 
 ;;;###autoload
-(defun caskxy/do-cask-command (command)
+(defun caskxy/do-cask-command (command &optional result-as-string)
   "Execute the command of Cask.
 
-COMMAND is the string equals the sub command of 'cask' command on shell."
+COMMAND is the string equals the sub command of 'cask' command on shell.
+RESULT-AS-STRING is boolean. If non-nil, return the string of the result of 'cask' command."
   (interactive
    (list (completing-read "Select Command: " caskxy--cask-commands nil t nil '() "install")))
-  (if (not (file-exists-p caskxy--cask-elisp))
-      (caskxy--show-message "Not found '%s'. Do you not yet install cask?" caskxy--cask-elisp)
-    (caskxy--trace "start do cask command : %s" command)
-    (caskxy--save-package-info
-      (let ((emacs-version (caskxy--detect-emacs-version))
-            (load-path (caskxy--detect-load-path))
-            (default-directory caskxy--cask-location)
-            (caskxy--install-command-enable nil))
-        (setq package-activated-list nil)
-        (caskxy--reload-cask-elisp)
-        (setq caskxy--install-command-enable t)
-        (unwind-protect
-            (if (string= command "exec")
-                (caskxy--do-exec)
-              (caskxy--trace "call cask-cli command : %s" command)
-              (funcall (intern-soft (concat "cask-cli/" command))))
-          (caskxy--unload-cask-elisp))))))
-
-;;;###autoload
-(defun caskxy/set-tester-backend (backend)
-  "Set BACKEND to `caskxy/tester-backend'."
-  (interactive
-   (list (completing-read "Select Backend (ert): " (mapcar 'car caskxy--tester-backends) nil t nil '() 'ert)))
-  (caskxy--trace "start set tester backend : %s" backend)
-  (when (and (stringp backend)
-             (not (string= backend "")))
-    (setq backend (intern backend)))
-  (if (not (symbolp backend))
-      (caskxy--show-message "Invalid value : %s" backend)
-    (setq caskxy/tester-backend backend)
-    (caskxy--show-message "Set '%s" backend)))
+  (yaxception:$
+    (yaxception:try
+      (if (not (file-exists-p caskxy/cask-cli-path))
+          (caskxy--show-message "Not found '%s'. Do you not yet install cask?" caskxy/cask-cli-path)
+        (caskxy--trace "start do cask command : %s" command)
+        (if (string= command "exec")
+            (caskxy--do-exec nil result-as-string)
+          (caskxy--trace "call cask-cli command : %s" command)
+          (let ((default-directory caskxy--cask-location))
+            (caskxy--with-clean-env
+              (caskxy--run-shell-command
+                (caskxy--get-emacs-script-command
+                 (format "%s -- %s"
+                         (shell-quote-argument (expand-file-name caskxy/cask-cli-path))
+                         command))
+                result-as-string))))))
+    (yaxception:catch 'error e
+      (caskxy--show-message "Failed do cask command : %s" (yaxception:get-text e))
+      (caskxy--error "failed do cask command : %s\n%s"
+                     (yaxception:get-text e)
+                     (yaxception:get-stack-trace-string e)))))
 
 ;;;###autoload
 (defun caskxy/run-test (test-file)
@@ -375,29 +386,37 @@ But if TEST-FILE is 'all, do the tests of all test files in the project."
                           (append (list 'all)
                                   (caskxy--seek-test-files))
                           nil t nil '() 'all)))
-  (caskxy--trace "start run test : %s" test-file)
-  (when (y-or-n-p (format "Start '%s' test using '%s ?" test-file caskxy/tester-backend))
-    (let* ((test-files (cond ((eq test-file 'all) (caskxy--seek-test-files))
-                             (t                   (list test-file))))
-           (bkendinfo (or (assoc-default caskxy/tester-backend caskxy--tester-backends)
-                          (caskxy--show-message "Unknown Backend : %s" caskxy/tester-backend)))
-           (builder (or (when bkendinfo (plist-get bkendinfo :builder))
-                        (caskxy--show-message "Not exists builder of %s" caskxy/tester-backend)))
-           (filter (when bkendinfo (plist-get bkendinfo :filter)))
-           (cmdarg (when builder
-                     (caskxy--trace "call builder function : %s" builder)
-                     (funcall builder test-files)))
-           (load-tested (format "-L '%s'" (directory-file-name caskxy--cask-location)))
-           (cmd (when (and (stringp cmdarg)
-                           (not (string= cmdarg "")))
-                  (caskxy--get-emacs-batch-command (concat load-tested " " cmdarg)))))
-      (when cmd
-        (caskxy--do-exec cmd)
-        (caskxy--awhen (and filter
-                            (get-buffer caskxy--exec-result-buffer-name))
-          (when (buffer-live-p it)
-            (caskxy--trace "call filter function : %s" filter)
-            (funcall filter it)))))))
+  (yaxception:$
+    (yaxception:try
+      (caskxy--trace "start run test : %s" test-file)
+      (when (y-or-n-p (format "Start '%s' test using '%s ?" test-file caskxy/tester-backend))
+        (let* ((test-files (cond ((eq test-file 'all) (caskxy--seek-test-files))
+                                 (t                   (list test-file))))
+               (bkendinfo (or (assoc-default caskxy/tester-backend caskxy--tester-backends)
+                              (caskxy--show-message "Unknown Backend : %s" caskxy/tester-backend)))
+               (builder (or (when bkendinfo (plist-get bkendinfo :builder))
+                            (caskxy--show-message "Not exists builder of %s" caskxy/tester-backend)))
+               (filter (when bkendinfo (plist-get bkendinfo :filter)))
+               (cmdarg (when builder
+                         (caskxy--trace "call builder function : %s" builder)
+                         (funcall builder test-files)))
+               (load-tested (concat "-L " (shell-quote-argument caskxy--cask-location)))
+               (cmd (when (and (stringp cmdarg)
+                               (not (string= cmdarg "")))
+                      (caskxy--get-emacs-batch-command (concat load-tested " " cmdarg))))
+               (default-directory caskxy--cask-location))
+          (when cmd
+            (caskxy--do-exec cmd)
+            (caskxy--awhen (and filter
+                                (get-buffer caskxy--result-buffer-name))
+              (when (buffer-live-p it)
+                (caskxy--trace "call filter function : %s" filter)
+                (funcall filter it)))))))
+    (yaxception:catch 'error e
+      (caskxy--show-message "Failed run test : %s" (yaxception:get-text e))
+      (caskxy--error "failed run test : %s\n%s"
+                     (yaxception:get-text e)
+                     (yaxception:get-stack-trace-string e)))))
 
 
 (provide 'caskxy)
