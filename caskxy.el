@@ -101,7 +101,6 @@
 (eval-when-compile (require 'cl))
 (require 'log4e)
 (require 'yaxception)
-(require 'package nil t)
 (require 'ert nil t)
 (require 'el-expectations nil t)
 (require 'ert-expectations nil t)
@@ -385,13 +384,13 @@ But if TEST-FILE is 'all, do the tests of all test files in the project."
    (list (completing-read "Select Test (all): "
                           (append (list 'all)
                                   (caskxy--seek-test-files))
-                          nil t nil '() 'all)))
+                          nil t nil '() "all")))
   (yaxception:$
     (yaxception:try
       (caskxy--trace "start run test : %s" test-file)
       (when (y-or-n-p (format "Start '%s' test using '%s ?" test-file caskxy/tester-backend))
-        (let* ((test-files (cond ((eq test-file 'all) (caskxy--seek-test-files))
-                                 (t                   (list test-file))))
+        (let* ((test-files (cond ((string= test-file "all") (caskxy--seek-test-files))
+                                 (t                         (list test-file))))
                (bkendinfo (or (assoc-default caskxy/tester-backend caskxy--tester-backends)
                               (caskxy--show-message "Unknown Backend : %s" caskxy/tester-backend)))
                (builder (or (when bkendinfo (plist-get bkendinfo :builder))
