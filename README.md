@@ -42,12 +42,16 @@ The following application is required.
 
 1.  clone cask repository to $HOME/.cask
     
+    ```sh
     $ cd $HOME
-    $ git clone <https://github.com/cask/cask.git> .cask
+    $ git clone https://github.com/cask/cask.git .cask
+    ```
 
 2.  download cask-cli.el of contrib to any location
     
-    $ curl -o ~/.emacs.d/cask-cli.el <https://raw.github.com/aki2o/caskxy/master/contrib/cask-cli.el>
+    ```sh
+    $ curl -o ~/.emacs.d/cask-cli.el https://raw.github.com/aki2o/caskxy/master/contrib/cask-cli.el
+    ```
 
 3.  set `caskxy/cask-cli-path`.
     

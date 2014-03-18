@@ -47,13 +47,17 @@
     _Python is no need._  
     
     1. clone cask repository to $HOME/.cask
-    
-        $ cd $HOME
-        $ git clone https://github.com/cask/cask.git .cask
+
+       #+BEGIN_SRC sh
+$ cd $HOME
+$ git clone https://github.com/cask/cask.git .cask
+       #+END_SRC
 
     2. download cask-cli.el of contrib to any location
-
-        $ curl -o ~/.emacs.d/cask-cli.el https://raw.github.com/aki2o/caskxy/master/contrib/cask-cli.el
+       
+       #+BEGIN_SRC sh
+$ curl -o ~/.emacs.d/cask-cli.el https://raw.github.com/aki2o/caskxy/master/contrib/cask-cli.el
+       #+END_SRC
 
     3. set =caskxy/cask-cli-path=.
 
