@@ -1,7 +1,5 @@
 #+OPTIONS: toc:nil
 
-[[https://github.com/aki2o/caskxy/blob/master/README-ja.md][Japanese]]
-
 * What's this?
   
   This is a extension of Emacs that controls Cask in Emacs.  
@@ -105,7 +103,7 @@ $ curl -o ~/.emacs.d/cask-cli.el https://raw.github.com/aki2o/caskxy/master/cont
 *** Add test function
 
     If you want to use other test function, Use =caskxy/add-tester-backend=.  
-    About the kind of bundled test function, M-x =caskxy/set-tester-backend=.  
+    About already defined test function, M-x =caskxy/set-tester-backend=.  
 
   
 * Tested On

@@ -1,5 +1,3 @@
-![Japanese](https://github.com/aki2o/caskxy/blob/master/README-ja.md)
-
 # What's this?
 
 This is a extension of Emacs that controls Cask in Emacs.  
@@ -96,7 +94,7 @@ M-x `caskxy/run-test`.
 ### Add test function
 
 If you want to use other test function, Use `caskxy/add-tester-backend`.  
-About the kind of bundled test function, M-x `caskxy/set-tester-backend`.  
+About already defined test function, M-x `caskxy/set-tester-backend`.  
 
 # Tested On
 
