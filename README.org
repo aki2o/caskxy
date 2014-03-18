@@ -44,7 +44,7 @@
     - Cygwin
     - curl
     
-    * Python is no need.
+    _Python is no need._  
     
     1. clone cask repository to $HOME/.cask
     

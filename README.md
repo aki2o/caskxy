@@ -38,19 +38,19 @@ The following application is required.
 -   Cygwin
 -   curl
 
--   Python is no need.
+<span class="underline">Python is no need.</span>  
 
--   clone cask repository to $HOME/.cask
+1.  clone cask repository to $HOME/.cask
 
--   download cask-cli.el of contrib to any location
+2.  download cask-cli.el of contrib to any location
 
--   set `caskxy/cask-cli-path`.
+3.  set `caskxy/cask-cli-path`.
     
     ```lisp
     (setq caskxy/cask-cli-path "~/.emacs.d/cask-cli.el")
     ```
 
--   do M-x `caskxy/do-cask-command` and select "upgrade". (It's equal to eval the following sexp.)
+4.  do M-x `caskxy/do-cask-command` and select "upgrade". (It's equal to eval the following sexp.)
     
     ```lisp
     (caskxy/do-cask-command "upgrade")
