@@ -33,7 +33,7 @@ Download caskxy.el and put it on your load-path.
 ### for Windows
 
 The following application is required.
--   Cygwin
+-   Unix Shell Environment (e.g. Cygwin)
 -   curl
 
 <span class="underline">Python is no need.</span>  

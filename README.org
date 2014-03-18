@@ -39,7 +39,7 @@
     
     The following application is required.
 
-    - Cygwin
+    - Unix Shell Environment (e.g. Cygwin)
     - curl
     
     _Python is no need._  
