@@ -7,11 +7,11 @@ Moreover, you can use Cask in Windows by using this extension.
 
 ### If use package.el
 
-2014/03/18 Now application
+2014/03/21 It's available by using melpa.
 
 ### If use el-get.el
 
-2014/03/18 Now application
+2014/03/21 It's available. But, master branch only.
 
 ### If use auto-install.el
 
