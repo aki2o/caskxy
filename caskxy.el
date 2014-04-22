@@ -5,7 +5,7 @@
 ;; Author: Hiroaki Otsu <ootsuhiroaki@gmail.com>
 ;; Keywords: convenience
 ;; URL: https://github.com/aki2o/caskxy
-;; Version: 0.0.2
+;; Version: 0.0.3
 ;; Package-Requires: ((log4e "0.2.0") (yaxception "0.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -247,7 +247,15 @@ FILTER is the function to do something for the buffer of the test result.
 (caskxy/add-tester-backend 'ert :builder 'caskxy/build-ert)
 
 (defun caskxy/build-el-expectations (test-files)
-  (format "%s -f batch-expectations" (caskxy--make-load-file-option test-files)))
+  (let* ((tmpdir (loop for envnm in '("TMP" "TEMP" "TMPDIR")
+                       for evalue = (getenv envnm)
+                       if (and (stringp evalue)
+                               (file-directory-p evalue))
+                       return evalue
+                       finally return "/tmp"))
+         (tmpfile (concat (directory-file-name tmpdir) "/.el-expectations.result")))
+    (format "%s -f batch-expectations '%s' ; cat '%s'"
+            (caskxy--make-load-file-option test-files) tmpfile tmpfile)))
 
 (defun caskxy/filter-el-expectations (buff)
   (caskxy--trace "start filter el expectations.")
@@ -267,7 +275,7 @@ FILTER is the function to do something for the buffer of the test result.
                            :filter 'caskxy/filter-el-expectations)
 
 (defun caskxy/build-ert-expectations (test-files)
-  (caskxy/build-el-expectations test-files))
+  (format "%s -f batch-expectations" (caskxy--make-load-file-option test-files)))
 
 (caskxy/add-tester-backend 'ert-expectations :builder 'caskxy/build-ert-expectations)
 
@@ -276,19 +284,22 @@ FILTER is the function to do something for the buffer of the test result.
 ;; User Command
 
 ;;;###autoload
-(defun caskxy/set-emacs-runtime (emacs)
+(defun caskxy/set-emacs-runtime (&optional emacs)
   "Set the condition of emacs runtime.
 
-EMACS is the path/command of the emacs runtime used for test."
+EMACS is the executable path of the emacs runtime used for test."
   (interactive
-   (list (read-file-name "Select Emacs Runtime (emacs): " "/" "emacs")))
+   (list (read-file-name "Emacs executable path (emacs): " "/" "emacs")))
   (yaxception:$
     (yaxception:try
       (caskxy--trace "start set emacs : %s" emacs)
-      (setenv "EMACS" (if (and (stringp emacs)
-                               (not (string= emacs "")))
-                          (expand-file-name emacs)
-                        "emacs"))
+      (setenv "EMACS" (cond ((or (not (stringp emacs))
+                                 (string= emacs ""))
+                             "emacs")
+                            ((executable-find emacs)
+                             emacs)
+                            (t
+                             (expand-file-name emacs))))
       (caskxy--show-message "Set '%s'" (getenv "EMACS")))
     (yaxception:catch 'error e
       (caskxy--show-message "Failed set emacs runtime : %s" (yaxception:get-text e))
