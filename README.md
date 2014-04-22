@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/aki2o/caskxy.svg?branch=master)](https://travis-ci.org/aki2o/caskxy)
+
 # What's this?
 
 This is a extension of Emacs that controls Cask in Emacs.  

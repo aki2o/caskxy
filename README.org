@@ -1,5 +1,7 @@
 #+OPTIONS: toc:nil
 
+[[travis-build:aki2o/caskxy#master]]
+
 * What's this?
   
   This is a extension of Emacs that controls Cask in Emacs.  
