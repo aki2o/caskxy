@@ -1,5 +1,5 @@
 (require 'caskxy)
-(require 'ert-expectations)
+(require 'el-expectations)
 
 (expectations
   (desc "run-test ert")
@@ -24,9 +24,10 @@
   (expect (mock (caskxy--do-exec (format "'emacs' -Q --batch -L %s -l %s -f batch-expectations %s ; cat %s"
                                          (expand-file-name "~/fuga")
                                          (expand-file-name "~/hoge/cask-test.el")
-                                         (expand-file-name "/tmp/.el-expectations.result")
-                                         (expand-file-name "/tmp/.el-expectations.result"))))
+                                         (expand-file-name "/tmp/.el-expectations.19871231012345.result")
+                                         (expand-file-name "/tmp/.el-expectations.19871231012345.result"))))
     (stub y-or-n-p => t)
+    (stub format-time-string => "19871231012345")
     (setenv "EMACS" "emacs")
     (setenv "TMP" (expand-file-name "/tmp"))
     (let ((caskxy/tester-backend 'el-expectations)

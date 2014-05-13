@@ -1,5 +1,5 @@
 (require 'caskxy)
-(require 'ert-expectations)
+(require 'el-expectations)
 
 (expectations
   (desc "do-cask-command not exist caskxy/cask-cli-path")

@@ -1,5 +1,5 @@
 (require 'caskxy)
-(require 'ert-expectations)
+(require 'el-expectations)
 
 (expectations
   (desc "with-clean-env exist env")

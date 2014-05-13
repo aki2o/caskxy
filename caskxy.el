@@ -5,7 +5,7 @@
 ;; Author: Hiroaki Otsu <ootsuhiroaki@gmail.com>
 ;; Keywords: convenience
 ;; URL: https://github.com/aki2o/caskxy
-;; Version: 0.0.4
+;; Version: 0.0.5
 ;; Package-Requires: ((log4e "0.2.0") (yaxception "0.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -253,7 +253,9 @@ FILTER is the function to do something for the buffer of the test result.
                                (file-directory-p evalue))
                        return evalue
                        finally return "/tmp"))
-         (tmpfile (concat (directory-file-name tmpdir) "/.el-expectations.result")))
+         (tmpfile (format "%s/.el-expectations.%s.result"
+                          (directory-file-name tmpdir)
+                          (format-time-string "%Y%m%d%H%M%S"))))
     (format "%s -f batch-expectations %s ; cat %s"
             (caskxy--make-load-file-option test-files)
             (shell-quote-argument tmpfile)
